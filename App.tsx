@@ -2,7 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Card } from './components/ui/card';
 import { Alert, AlertDescription } from './components/ui/alert';
 import { Separator } from './components/ui/separator';
-import { FileText, AlertCircle, Sparkles } from 'lucide-react';
+import { Button } from './components/ui/button';
+import { FileText, AlertCircle, Sparkles, Route } from 'lucide-react';
 import { Header } from './components/Header';
 import { InputForm } from './components/InputForm';
 import { ResultsDisplay } from './components/ResultsDisplay';
@@ -11,8 +12,10 @@ import { LoadingSpinner } from './components/LoadingSpinner';
 import { RouteTimeline } from './components/RouteTimeline';
 import { RouteAnalysis } from './components/RouteAnalysis';
 import { RiskAnalysis } from './components/RiskAnalysis';
-import { RouteTabs } from './components/RouteTabs';
+import { AllRoutesDrawer } from './components/AllRoutesDrawer';
+import { CacheManager } from './components/CacheManager';
 import { getPlannerSuggestion, getStructuredExplainerAnalysis, getRouteCostAnalysis, generateRouteTimeline, getRiskAnalysis } from './services/geminiService';
+import { cache } from './lib/cache';
 import { INITIAL_SHIPMENT_ROUTES } from './constants';
 import type { ShipmentRoute, PlannerResponse, WhatIfParams, CostAnalysisFactor, RouteSegment, StructuredExplanation, RiskAnalysisResponse } from './types';
 
@@ -46,6 +49,14 @@ const App: React.FC = () => {
   // New state for risk analysis
   const [isRiskLoading, setIsRiskLoading] = useState<boolean>(false);
   const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysisResponse | null>(null);
+
+  // State for drawer
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  
+  // State for individual route analyses
+  const [routeCostAnalyses, setRouteCostAnalyses] = useState<Record<string, CostAnalysisFactor[]>>({});
+  const [routeRiskAnalyses, setRouteRiskAnalyses] = useState<Record<string, RiskAnalysisResponse>>({});
+  const [routeAnalysisLoading, setRouteAnalysisLoading] = useState<Record<string, { cost: boolean; risk: boolean }>>({});
 
   const fetchAndCacheRouteDetails = useCallback(async (route: ShipmentRoute) => {
     // Don't fetch if already cached or already loading
@@ -96,6 +107,9 @@ const App: React.FC = () => {
     setCachedRouteData({}); // Clear cache on new analysis
     setRouteLoadingStatus({});
     setRiskAnalysis(null); // Clear old risk analysis
+    setRouteCostAnalyses({}); // Clear drawer analyses
+    setRouteRiskAnalyses({});
+    setRouteAnalysisLoading({});
 
     try {
       const plannerResult = await getPlannerSuggestion(currentRoutes, goal, constraints);
@@ -145,6 +159,55 @@ const App: React.FC = () => {
         setIsRiskLoading(false);
     }
   };
+
+  // Individual route analysis functions
+  const handleRouteCostAnalysis = async (route: ShipmentRoute) => {
+    const routeName = route.route_name;
+    
+    setRouteAnalysisLoading(prev => ({
+      ...prev,
+      [routeName]: { ...prev[routeName], cost: true }
+    }));
+
+    try {
+      const analysis = await getRouteCostAnalysis(route);
+      setRouteCostAnalyses(prev => ({
+        ...prev,
+        [routeName]: analysis
+      }));
+    } catch (err) {
+      console.error(`Failed to run cost analysis for ${routeName}:`, err);
+    } finally {
+      setRouteAnalysisLoading(prev => ({
+        ...prev,
+        [routeName]: { ...prev[routeName], cost: false }
+      }));
+    }
+  };
+
+  const handleRouteRiskAnalysis = async (route: ShipmentRoute) => {
+    const routeName = route.route_name;
+    
+    setRouteAnalysisLoading(prev => ({
+      ...prev,
+      [routeName]: { ...prev[routeName], risk: true }
+    }));
+
+    try {
+      const analysis = await getRiskAnalysis(route, currentConstraints);
+      setRouteRiskAnalyses(prev => ({
+        ...prev,
+        [routeName]: analysis
+      }));
+    } catch (err) {
+      console.error(`Failed to run risk analysis for ${routeName}:`, err);
+    } finally {
+      setRouteAnalysisLoading(prev => ({
+        ...prev,
+        [routeName]: { ...prev[routeName], risk: false }
+      }));
+    }
+  };
   
   useEffect(() => {
     const updatedRoutes = INITIAL_SHIPMENT_ROUTES.map(route => {
@@ -183,6 +246,14 @@ const App: React.FC = () => {
   const selectedRouteData = selectedRoute ? cachedRouteData[selectedRoute.route_name] : null;
   const isAnalysisLoading = selectedRoute ? routeLoadingStatus[selectedRoute.route_name] : false;
 
+  // Cleanup expired cache items on app initialization
+  useEffect(() => {
+    const cleanupCount = cache.cleanup();
+    if (cleanupCount > 0) {
+      console.log(`Cleaned up ${cleanupCount} expired cache items on app start`);
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -192,6 +263,7 @@ const App: React.FC = () => {
           <div className="lg:col-span-1 space-y-6">
             <InputForm onPlanShipment={handlePlanShipment} isLoading={isLoading} />
             <WhatIfScenario params={whatIfParams} setParams={setWhatIfParams} />
+            <CacheManager />
           </div>
 
           <div className="lg:col-span-2 space-y-6">
@@ -235,12 +307,22 @@ const App: React.FC = () => {
                 </div>
                 
                 <div className="px-6 py-4">
-                  <RouteTabs 
-                    routes={routesData} 
-                    selectedRoute={selectedRoute} 
-                    onSelectRoute={handleRouteSelect} 
-                    loadingStatus={routeLoadingStatus}
-                  />
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold">Route Analysis</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedRoute ? `Viewing details for ${selectedRoute.route_name}` : 'Select a route to view detailed analysis'}
+                      </p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setIsDrawerOpen(true)}
+                      className="flex items-center gap-2"
+                    >
+                      <Route className="h-4 w-4" />
+                      See All Routes
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="p-6">
@@ -268,6 +350,20 @@ const App: React.FC = () => {
           </div>
         </div>
       </main>
+      
+      {/* All Routes Drawer */}
+      <AllRoutesDrawer
+        open={isDrawerOpen}
+        onOpenChange={setIsDrawerOpen}
+        routes={routesData}
+        selectedRoute={selectedRoute}
+        onSelectRoute={handleRouteSelect}
+        onRunCostAnalysis={handleRouteCostAnalysis}
+        onRunRiskAnalysis={handleRouteRiskAnalysis}
+        costAnalysisData={routeCostAnalyses}
+        riskAnalysisData={routeRiskAnalyses}
+        loadingStatus={routeAnalysisLoading}
+      />
     </div>
   );
 };

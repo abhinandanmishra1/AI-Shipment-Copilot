@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
+import { typedCache } from '../lib/cache';
 import type { ShipmentRoute, PlannerResponse, CostAnalysisFactor, RouteSegment, StructuredExplanation, RiskAnalysisResponse } from '../types';
 
 if (!process.env.GEMINI_API_KEY) {
@@ -8,6 +9,13 @@ if (!process.env.GEMINI_API_KEY) {
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export async function getPlannerSuggestion(routes: ShipmentRoute[], goal: string, constraints: string): Promise<PlannerResponse> {
+  // Check cache first
+  const cached = typedCache.planner.get(routes, goal, constraints);
+  if (cached) {
+    console.log('Using cached planner result');
+    return cached;
+  }
+
   const model = 'gemini-2.5-flash';
 
   const prompt = `You are an AI Planner Agent for a shipment planning tool. Your goal is to suggest the best initial shipment route based on user-provided constraints. Given a list of shipment routes, a user's primary goal, and optional constraints, output a single JSON object for the optimal route.
@@ -46,7 +54,10 @@ export async function getPlannerSuggestion(routes: ShipmentRoute[], goal: string
 
   const jsonText = response.text.trim();
   try {
-    return JSON.parse(jsonText) as PlannerResponse;
+    const result = JSON.parse(jsonText) as PlannerResponse;
+    // Cache the result
+    typedCache.planner.set(routes, goal, constraints, result);
+    return result;
   } catch (e) {
     console.error("Failed to parse Planner JSON response:", jsonText);
     throw new Error("The AI Planner returned an invalid format.");
@@ -54,6 +65,13 @@ export async function getPlannerSuggestion(routes: ShipmentRoute[], goal: string
 }
 
 export async function getStructuredExplainerAnalysis(routes: ShipmentRoute[], plannerResult: PlannerResponse): Promise<StructuredExplanation> {
+    // Check cache first
+    const cached = typedCache.explainer.get(routes, plannerResult);
+    if (cached) {
+        console.log('Using cached explainer result');
+        return cached;
+    }
+
     const model = 'gemini-2.5-flash';
     const alternativeRoutes = routes.filter(r => r.route_name !== plannerResult.suggested_route);
 
@@ -110,7 +128,10 @@ export async function getStructuredExplainerAnalysis(routes: ShipmentRoute[], pl
 
     const jsonText = response.text.trim();
     try {
-        return JSON.parse(jsonText) as StructuredExplanation;
+        const result = JSON.parse(jsonText) as StructuredExplanation;
+        // Cache the result
+        typedCache.explainer.set(routes, plannerResult, result);
+        return result;
     } catch (e) {
         console.error("Failed to parse Explainer JSON response:", jsonText);
         throw new Error("The AI Explainer returned an invalid format.");
@@ -118,6 +139,13 @@ export async function getStructuredExplainerAnalysis(routes: ShipmentRoute[], pl
 }
 
 export async function getRouteCostAnalysis(route: ShipmentRoute): Promise<CostAnalysisFactor[]> {
+    // Check cache first
+    const cached = typedCache.costAnalysis.get(route);
+    if (cached) {
+        console.log('Using cached cost analysis result');
+        return cached;
+    }
+
     const model = 'gemini-2.5-flash';
 
     const prompt = `You are a logistics cost analyst. Given the data for a single shipment route, provide a JSON array of objects explaining the key factors contributing to its cost. Each object should analyze one factor.
@@ -159,7 +187,10 @@ export async function getRouteCostAnalysis(route: ShipmentRoute): Promise<CostAn
     
     const jsonText = response.text.trim();
     try {
-        return JSON.parse(jsonText) as CostAnalysisFactor[];
+        const result = JSON.parse(jsonText) as CostAnalysisFactor[];
+        // Cache the result
+        typedCache.costAnalysis.set(route, result);
+        return result;
     } catch (e) {
         console.error("Failed to parse Analyst JSON response:", jsonText);
         throw new Error("The AI Analyst returned an invalid format.");
@@ -167,6 +198,13 @@ export async function getRouteCostAnalysis(route: ShipmentRoute): Promise<CostAn
 }
 
 export async function generateRouteTimeline(route: ShipmentRoute): Promise<RouteSegment[]> {
+    // Check cache first
+    const cached = typedCache.timeline.get(route);
+    if (cached) {
+        console.log('Using cached timeline result');
+        return cached;
+    }
+
     const model = 'gemini-2.5-flash';
     const prompt = `You are a logistics planner. Based on the shipment route data below, create a detailed, step-by-step timeline as a JSON array of segments.
     - The first segment must be type: 'origin' and the last must be type: 'destination'.
@@ -200,7 +238,10 @@ export async function generateRouteTimeline(route: ShipmentRoute): Promise<Route
 
     const jsonText = response.text.trim();
     try {
-        return JSON.parse(jsonText) as RouteSegment[];
+        const result = JSON.parse(jsonText) as RouteSegment[];
+        // Cache the result
+        typedCache.timeline.set(route, result);
+        return result;
     } catch (e) {
         console.error("Failed to parse Timeline JSON response:", jsonText);
         throw new Error("The AI Planner returned an invalid timeline format.");
@@ -208,6 +249,13 @@ export async function generateRouteTimeline(route: ShipmentRoute): Promise<Route
 }
 
 export async function getRiskAnalysis(route: ShipmentRoute, constraints: string): Promise<RiskAnalysisResponse> {
+    // Check cache first
+    const cached = typedCache.riskAnalysis.get(route, constraints);
+    if (cached) {
+        console.log('Using cached risk analysis result');
+        return cached;
+    }
+
     const model = 'gemini-2.5-flash';
 
     const prompt = `You are a logistics Risk Analysis Agent. Analyze the given shipment route for potential risks based on its data and user-specified constraints.
@@ -250,7 +298,10 @@ export async function getRiskAnalysis(route: ShipmentRoute, constraints: string)
 
     const jsonText = response.text.trim();
     try {
-        return JSON.parse(jsonText) as RiskAnalysisResponse;
+        const result = JSON.parse(jsonText) as RiskAnalysisResponse;
+        // Cache the result
+        typedCache.riskAnalysis.set(route, constraints, result);
+        return result;
     } catch (e) {
         console.error("Failed to parse Risk Analysis JSON response:", jsonText);
         throw new Error("The AI Risk Analyst returned an invalid format.");
