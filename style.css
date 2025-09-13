@@ -42,25 +42,51 @@
 }
 
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
-  --primary: oklch(0.21 0.006 285.885);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
-  --ring: oklch(0.705 0.015 286.067);
+  --radius: 0.75rem;
+  /* Modern AI Dashboard Colors */
+  --background: #f8fafc;
+  --foreground: #1e293b;
+  --card: #ffffff;
+  --card-foreground: #1e293b;
+  --popover: #ffffff;
+  --popover-foreground: #1e293b;
+  
+  /* Primary: Blue/Teal Gradient */
+  --primary: #0ea5e9;
+  --primary-foreground: #ffffff;
+  --primary-gradient: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+  
+  /* Secondary: Indigo */
+  --secondary: #6366f1;
+  --secondary-foreground: #ffffff;
+  
+  /* Muted: Light grays */
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  
+  /* Accent: Success Green */
+  --accent: #10b981;
+  --accent-foreground: #ffffff;
+  
+  /* Destructive: Risk Red */
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  
+  /* Borders and inputs */
+  --border: #e2e8f0;
+  --input: #f1f5f9;
+  --ring: #0ea5e9;
+  
+  /* Agent Colors */
+  --agent-planner: #0ea5e9;
+  --agent-risk: #f59e0b;
+  --agent-explainer: #8b5cf6;
+  --agent-whatif: #ef4444;
+  
+  /* Dashboard specific */
+  --dashboard-bg: #f8fafc;
+  --sidebar-bg: #ffffff;
+  --nav-bg: #ffffff;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -116,5 +142,85 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Modern Dashboard Components */
+  .dashboard-card {
+    @apply bg-card border border-border rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200;
+  }
+  
+  .dashboard-nav {
+    @apply bg-white border-b border-border shadow-sm;
+  }
+  
+  .dashboard-sidebar {
+    @apply bg-white border-r border-border shadow-sm;
+  }
+  
+  .agent-bubble {
+    @apply rounded-2xl px-4 py-3 max-w-md shadow-sm;
+  }
+  
+  .agent-planner {
+    @apply bg-blue-500 text-white;
+  }
+  
+  .agent-risk {
+    @apply bg-amber-500 text-white;
+  }
+  
+  .agent-explainer {
+    @apply bg-purple-500 text-white;
+  }
+  
+  .agent-whatif {
+    @apply bg-red-500 text-white;
+  }
+  
+  .user-bubble {
+    @apply bg-white border border-gray-200 text-gray-900 rounded-2xl px-4 py-3 max-w-md shadow-sm ml-auto;
+  }
+  
+  .gradient-header {
+    background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+  }
+  
+  .gradient-button {
+    background: linear-gradient(135deg, #0ea5e9 0%, #06b6d4 100%);
+    @apply text-white border-0 hover:shadow-lg transition-all duration-200;
+  }
+  
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-colors duration-200 cursor-pointer;
+  }
+  
+  .sidebar-item.active {
+    @apply bg-blue-50 text-blue-600 border-r-2 border-blue-600;
+  }
+  
+  .chart-card {
+    @apply dashboard-card p-6;
+  }
+  
+  .stat-card {
+    @apply dashboard-card p-4 text-center;
+  }
+  
+  .modern-input {
+    @apply bg-white border border-gray-200 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
+  }
+  
+  .modern-button {
+    @apply px-6 py-2 rounded-lg font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2;
+  }
+  
+  .modern-button-primary {
+    @apply modern-button bg-blue-500 text-white hover:bg-blue-600 focus:ring-blue-500;
+  }
+  
+  .modern-button-secondary {
+    @apply modern-button bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500;
   }
 }

@@ -1,371 +1,510 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Card } from './components/ui/card';
-import { Alert, AlertDescription } from './components/ui/alert';
-import { Separator } from './components/ui/separator';
-import { Button } from './components/ui/button';
-import { FileText, AlertCircle, Sparkles, Route } from 'lucide-react';
-import { Header } from './components/Header';
-import { InputForm } from './components/InputForm';
-import { ResultsDisplay } from './components/ResultsDisplay';
-import { WhatIfScenario } from './components/WhatIfScenario';
-import { LoadingSpinner } from './components/LoadingSpinner';
-import { RouteTimeline } from './components/RouteTimeline';
-import { RouteAnalysis } from './components/RouteAnalysis';
-import { RiskAnalysis } from './components/RiskAnalysis';
-import { AllRoutesDrawer } from './components/AllRoutesDrawer';
-import { CacheManager } from './components/CacheManager';
-import { getPlannerSuggestion, getStructuredExplainerAnalysis, getRouteCostAnalysis, generateRouteTimeline, getRiskAnalysis } from './services/geminiService';
-import { cache } from './lib/cache';
-import { INITIAL_SHIPMENT_ROUTES } from './constants';
-import type { ShipmentRoute, PlannerResponse, WhatIfParams, CostAnalysisFactor, RouteSegment, StructuredExplanation, RiskAnalysisResponse } from './types';
+import { useState, useEffect } from "react";
+import { TopNavigation } from "./components/TopNavigation";
+import { Sidebar } from "./components/Sidebar";
+import { ChatInterface } from "./components/ChatInterface";
+import { VisualizationPanel } from "./components/VisualizationPanel";
+import { WhatIfSimulator } from "./components/WhatIfSimulator";
+import { RouteComparison } from "./components/RouteComparison";
+import { shipmentRoutes } from "./data/routes";
+import { 
+  getPlannerSuggestion, 
+  getStructuredExplainerAnalysis, 
+  getRouteCostAnalysis, 
+  getRiskAnalysis 
+} from "./services/geminiService";
+import type { ShipmentRoute } from "./types";
+import { 
+  Ship, 
+  Plane, 
+  Truck
+} from "lucide-react";
 
-// Define a type for our cache
-type RouteDataCache = {
-    analysis: CostAnalysisFactor[];
-    segments: RouteSegment[];
-};
-
-const App: React.FC = () => {
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [plannerResponse, setPlannerResponse] = useState<PlannerResponse | null>(null);
-  const [explainerResponse, setExplainerResponse] = useState<StructuredExplanation | null>(null);
+export default function App() {
+  const [activeTab, setActiveTab] = useState("planner");
+  const [chatMessages, setChatMessages] = useState<any[]>([
+    {
+      id: "welcome-1",
+      content: "Welcome to AI Shipment Copilot! I can help you plan and optimize your shipments.",
+      sender: "planner",
+      timestamp: new Date()
+    },
+    {
+      id: "welcome-2",
+      content: "Try asking me something like:\n• Plan a shipment from Shanghai to Los Angeles\n• Find the fastest route from Rotterdam to New York\n• Plan a shipment from Hamburg to Singapore with low cost and minimal risk",
+      sender: "planner",
+      timestamp: new Date()
+    }
+  ]);
+  const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
+  const [showComparison, setShowComparison] = useState(false);
+  const [recommendedRoute, setRecommendedRoute] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   
-  const [routesData, setRoutesData] = useState<ShipmentRoute[]>(INITIAL_SHIPMENT_ROUTES);
-  const [whatIfParams, setWhatIfParams] = useState<WhatIfParams>({
-    fuelCostIncreasePercentage: 0,
-    additionalCustomsDelayDays: 0,
+  // Shipment planning state
+  const [origin, setOrigin] = useState("Shanghai");
+  const [destination, setDestination] = useState("Los Angeles");
+  const [goal, setGoal] = useState("");
+  const [constraints, setConstraints] = useState("");
+  const [plannerResponse, setPlannerResponse] = useState<any>(null);
+  const [explainerResponse, setExplainerResponse] = useState<any>(null);
+  const [costAnalysis, setCostAnalysis] = useState<any>(null);
+  const [riskAnalysis, setRiskAnalysis] = useState<any>(null);
+  
+  // What-If scenario parameters
+  const [whatIfParams, setWhatIfParams] = useState({
+    fuelCostIncrease: 0,
+    customsDelay: 0,
+    weatherRisk: "medium"
   });
-
-  const [currentGoal, setCurrentGoal] = useState<string>('');
-  const [currentConstraints, setCurrentConstraints] = useState<string>('');
   
-  const [selectedRoute, setSelectedRoute] = useState<ShipmentRoute | null>(null);
+  // Function to add a message to the chat
+  const addChatMessage = (message: any) => {
+    setChatMessages(prev => [...prev, message]);
+    
+    // If this is a planner message with a recommended route, save it
+    if (message.sender === "planner" && message.content.includes("recommend")) {
+      const routeName = shipmentRoutes.find(r => 
+        message.content.includes(r.name)
+      )?.name || null;
+      
+      if (routeName) {
+        setRecommendedRoute(routeName);
+        setSelectedRoutes([routeName]);
+      }
+    }
+  };
   
-  // State for caching and loading statuses
-  const [cachedRouteData, setCachedRouteData] = useState<Record<string, RouteDataCache>>({});
-  const [routeLoadingStatus, setRouteLoadingStatus] = useState<Record<string, boolean>>({});
-
-  // New state for risk analysis
-  const [isRiskLoading, setIsRiskLoading] = useState<boolean>(false);
-  const [riskAnalysis, setRiskAnalysis] = useState<RiskAnalysisResponse | null>(null);
-
-  // State for drawer
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
-  
-  // State for individual route analyses
-  const [routeCostAnalyses, setRouteCostAnalyses] = useState<Record<string, CostAnalysisFactor[]>>({});
-  const [routeRiskAnalyses, setRouteRiskAnalyses] = useState<Record<string, RiskAnalysisResponse>>({});
-  const [routeAnalysisLoading, setRouteAnalysisLoading] = useState<Record<string, { cost: boolean; risk: boolean }>>({});
-
-  const fetchAndCacheRouteDetails = useCallback(async (route: ShipmentRoute) => {
-    // Don't fetch if already cached or already loading
-    if (cachedRouteData[route.route_name] || routeLoadingStatus[route.route_name]) {
-      return;
+  // Parse user message to extract planning information
+  const parseUserMessage = (message: string) => {
+    console.log("Parsing user message:", message);
+    
+    // Default values if not specified
+    let newOrigin = "Shanghai";
+    let newDestination = "Los Angeles";
+    let newConstraints = "";
+    
+    // Extract origin and destination
+    const originMatch = message.match(/from\s+([A-Za-z\s]+?)(?:\s+to|\s*$)/i);
+    const destinationMatch = message.match(/to\s+([A-Za-z\s]+?)(?:\s+with|\s*$)/i);
+    
+    if (originMatch && originMatch[1]) {
+      newOrigin = originMatch[1].trim();
+      console.log("Extracted origin:", newOrigin);
     }
     
-    setRouteLoadingStatus(prev => ({ ...prev, [route.route_name]: true }));
-
-    try {
-      const [analysis, segments] = await Promise.all([
-        getRouteCostAnalysis(route),
-        generateRouteTimeline(route)
-      ]);
-      setCachedRouteData(prev => ({ ...prev, [route.route_name]: { analysis, segments } }));
-    } catch (err) {
-      console.error(`Failed to fetch details for ${route.route_name}:`, err);
-      // Optionally clear cache for this route if it fails
-      setCachedRouteData(prev => {
-        const newCache = { ...prev };
-        delete newCache[route.route_name];
-        return newCache;
-      });
-    } finally {
-      setRouteLoadingStatus(prev => ({ ...prev, [route.route_name]: false }));
+    if (destinationMatch && destinationMatch[1]) {
+      newDestination = destinationMatch[1].trim();
+      console.log("Extracted destination:", newDestination);
     }
-  }, [cachedRouteData, routeLoadingStatus]);
-
-
-  const handleRouteSelect = useCallback((route: ShipmentRoute) => {
-      setSelectedRoute(route);
-      setRiskAnalysis(null); // Clear risk analysis when switching routes
-      // Fetch data for the selected route if it's not already cached
-      if (!cachedRouteData[route.route_name]) {
-          fetchAndCacheRouteDetails(route);
-      }
-  }, [cachedRouteData, fetchAndCacheRouteDetails]);
-
-
-  const runAnalysis = useCallback(async (goal: string, constraints: string, currentRoutes: ShipmentRoute[]) => {
-    if (!goal) return;
-
-    setIsLoading(true);
-    setError(null);
+    
+    // Extract constraints
+    const constraintsMatch = message.match(/with\s+(.+?)(?:\.|$)/i);
+    if (constraintsMatch && constraintsMatch[1]) {
+      newConstraints = constraintsMatch[1].trim();
+      console.log("Extracted constraints:", newConstraints);
+    }
+    
+    // Update state
+    setOrigin(newOrigin);
+    setDestination(newDestination);
+    setConstraints(newConstraints);
+    setGoal(message);
+    
+    // Start planning process
+    handlePlanShipment(newOrigin, newDestination, message, newConstraints);
+  };
+  
+  // Handle shipment planning
+  const handlePlanShipment = async (
+    planOrigin: string = origin, 
+    planDestination: string = destination,
+    planGoal: string = goal,
+    planConstraints: string = constraints
+  ) => {
+    if (!planGoal) return;
+    
+    console.log("Planning shipment with:", { planOrigin, planDestination, planGoal, planConstraints });
+    
+    setIsProcessing(true);
     setPlannerResponse(null);
     setExplainerResponse(null);
-    setSelectedRoute(null);
-    setCachedRouteData({}); // Clear cache on new analysis
-    setRouteLoadingStatus({});
-    setRiskAnalysis(null); // Clear old risk analysis
-    setRouteCostAnalyses({}); // Clear drawer analyses
-    setRouteRiskAnalyses({});
-    setRouteAnalysisLoading({});
-
+    setCostAnalysis(null);
+    setRiskAnalysis(null);
+    
+    // Add loading message
+    const loadingMessageId = Date.now().toString();
+    addChatMessage({
+      id: loadingMessageId,
+      content: "Planning your shipment...",
+      sender: "planner",
+      timestamp: new Date(),
+      isLoading: true
+    });
+    
     try {
-      const plannerResult = await getPlannerSuggestion(currentRoutes, goal, constraints);
+      // Convert routes to ShipmentRoute format
+      const routesWithLocations: ShipmentRoute[] = shipmentRoutes.map(route => ({
+        route_name: route.name,
+        origin: planOrigin,
+        destination: planDestination,
+        mode_of_transport: route.segments[0].mode === 'ocean' ? 'sea' : 
+                          route.segments[0].mode === 'air' ? 'air' : 'road',
+        base_cost_usd: route.totalCost,
+        transit_time_days: route.totalDuration,
+        risk_factors: {
+          customs_delay_days: route.riskFactors.customs,
+          weather_risk_score: route.riskFactors.weather,
+          port_congestion_risk_score: route.riskFactors.congestion
+        }
+      }));
+      
+      // Get planner suggestion
+      const plannerResult = await getPlannerSuggestion(
+        routesWithLocations, 
+        planGoal, 
+        planConstraints
+      );
       setPlannerResponse(plannerResult);
 
-      if (plannerResult && plannerResult.suggested_route) {
-        const suggested = currentRoutes.find(r => r.route_name === plannerResult.suggested_route);
-        if (suggested) {
-            // Automatically select the suggested route and fetch its data first
-            setSelectedRoute(suggested);
-            await fetchAndCacheRouteDetails(suggested);
-        }
-        
-        // Fetch explainer and other routes' data in parallel
-        const explainerPromise = getStructuredExplainerAnalysis(currentRoutes, plannerResult);
-        const backgroundFetchPromise = Promise.all(
-          currentRoutes
-            .filter(r => r.route_name !== plannerResult.suggested_route)
-            .map(r => fetchAndCacheRouteDetails(r))
-        );
-
-        const explainerResult = await explainerPromise;
+      // Replace loading message with actual response
+      setChatMessages(prev => prev.map(msg => 
+        msg.id === loadingMessageId ? {
+          ...msg,
+          content: `Based on your requirements, I recommend ${plannerResult.suggested_route}. ${plannerResult.reason}`,
+          isLoading: false
+        } : msg
+      ));
+      
+      // Add explainer message
+      addChatMessage({
+        id: Date.now().toString(),
+        content: "Analyzing route options in detail...",
+        sender: "explainer",
+        timestamp: new Date(),
+        isLoading: true
+      });
+      
+      // Get explainer analysis
+      const explainerResult = await getStructuredExplainerAnalysis(
+        routesWithLocations,
+        plannerResult
+      );
         setExplainerResponse(explainerResult);
 
-        await backgroundFetchPromise;
-      }
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [fetchAndCacheRouteDetails]);
-
-  const handleRunRiskAnalysis = async () => {
-    if (!selectedRoute) return;
-
-    setIsRiskLoading(true);
-    setRiskAnalysis(null);
-    try {
-        const result = await getRiskAnalysis(selectedRoute, currentConstraints);
-        setRiskAnalysis(result);
-    } catch (err) {
-        console.error("Failed to run risk analysis:", err);
-        // Maybe set an error state specific to the risk component
-    } finally {
-        setIsRiskLoading(false);
-    }
-  };
-
-  // Individual route analysis functions
-  const handleRouteCostAnalysis = async (route: ShipmentRoute) => {
-    const routeName = route.route_name;
-    
-    setRouteAnalysisLoading(prev => ({
-      ...prev,
-      [routeName]: { ...prev[routeName], cost: true }
-    }));
-
-    try {
-      const analysis = await getRouteCostAnalysis(route);
-      setRouteCostAnalyses(prev => ({
-        ...prev,
-        [routeName]: analysis
-      }));
-    } catch (err) {
-      console.error(`Failed to run cost analysis for ${routeName}:`, err);
-    } finally {
-      setRouteAnalysisLoading(prev => ({
-        ...prev,
-        [routeName]: { ...prev[routeName], cost: false }
-      }));
-    }
-  };
-
-  const handleRouteRiskAnalysis = async (route: ShipmentRoute) => {
-    const routeName = route.route_name;
-    
-    setRouteAnalysisLoading(prev => ({
-      ...prev,
-      [routeName]: { ...prev[routeName], risk: true }
-    }));
-
-    try {
-      const analysis = await getRiskAnalysis(route, currentConstraints);
-      setRouteRiskAnalyses(prev => ({
-        ...prev,
-        [routeName]: analysis
-      }));
-    } catch (err) {
-      console.error(`Failed to run risk analysis for ${routeName}:`, err);
-    } finally {
-      setRouteAnalysisLoading(prev => ({
-        ...prev,
-        [routeName]: { ...prev[routeName], risk: false }
-      }));
-    }
-  };
-  
-  useEffect(() => {
-    const updatedRoutes = INITIAL_SHIPMENT_ROUTES.map(route => {
-      const costMultiplier = 1 + whatIfParams.fuelCostIncreasePercentage / 100;
-      const newCost = Math.round(route.base_cost_usd * costMultiplier);
+      // Add explainer message
+      const summaryPoints = explainerResult.suggested_route_summary.pros
+        .slice(0, 2)
+        .map(pro => `✓ ${pro}`)
+        .join("\n");
       
-      const newTransitTime = route.transit_time_days + (route.risk_factors.customs_delay_days + whatIfParams.additionalCustomsDelayDays);
-
-      return {
-        ...route,
-        base_cost_usd: newCost,
-        transit_time_days: newTransitTime,
-      };
-    });
-    setRoutesData(updatedRoutes);
-    
-    if (selectedRoute) {
-        const updatedSelected = updatedRoutes.find(r => r.route_name === selectedRoute.route_name);
-        if(updatedSelected) {
-            setSelectedRoute(updatedSelected);
-        }
+      setChatMessages(prev => prev.map(msg => 
+        msg.sender === "explainer" && msg.isLoading ? {
+          ...msg,
+          content: `Here's why ${plannerResult.suggested_route} is recommended:\n\n${summaryPoints}\n\nI've prepared a detailed comparison of all routes below.`,
+          isLoading: false
+        } : msg
+      ));
+      
+      // Set recommended route
+      const recommendedRouteName = plannerResult.suggested_route;
+      if (recommendedRouteName) {
+        setRecommendedRoute(recommendedRouteName);
+        setSelectedRoutes([recommendedRouteName]);
+      }
+      
+    } catch (error) {
+      console.error("Error planning shipment:", error);
+      
+      // Update error in chat
+      setChatMessages(prev => prev.map(msg => 
+        msg.isLoading ? {
+          ...msg,
+          content: "I encountered an error while planning your shipment. Please try again.",
+          isLoading: false
+        } : msg
+      ));
+    } finally {
+      setIsProcessing(false);
     }
-
-    if (currentGoal) {
-       runAnalysis(currentGoal, currentConstraints, updatedRoutes);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [whatIfParams]);
-
-  const handlePlanShipment = async (goal: string, constraints: string) => {
-    setCurrentGoal(goal);
-    setCurrentConstraints(constraints);
-    await runAnalysis(goal, constraints, INITIAL_SHIPMENT_ROUTES);
   };
-
-  const selectedRouteData = selectedRoute ? cachedRouteData[selectedRoute.route_name] : null;
-  const isAnalysisLoading = selectedRoute ? routeLoadingStatus[selectedRoute.route_name] : false;
-
-  // Cleanup expired cache items on app initialization
-  useEffect(() => {
-    const cleanupCount = cache.cleanup();
-    if (cleanupCount > 0) {
-      console.log(`Cleaned up ${cleanupCount} expired cache items on app start`);
-    }
-  }, []);
-
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <main className="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          <div className="lg:col-span-1 space-y-6">
-            <InputForm onPlanShipment={handlePlanShipment} isLoading={isLoading} />
-            <WhatIfScenario params={whatIfParams} setParams={setWhatIfParams} />
-            <CacheManager />
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Navigation */}
+      <TopNavigation />
+      
+      <div className="flex">
+        {/* Left Sidebar */}
+        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
+        
+        {/* Main Content Area */}
+        <div className="flex-1 p-6">
+          <div className="max-w-full">
+            {/* Page Header */}
+            <div className="mb-8 flex items-end justify-between">
+              <div>
+                <h2 className="text-2xl font-semibold text-gray-900 mb-2">Shipment Planning Workspace</h2>
+                <p className="text-gray-600">Plan, analyze, and optimize your global shipments with AI assistance</p>
           </div>
 
-          <div className="lg:col-span-2 space-y-6">
-            {isLoading && (
-              <Card className="flex justify-center items-center h-96">
-                <LoadingSpinner />
-              </Card>
-            )}
-            
-            {!isLoading && error && (
-              <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  <strong>Error:</strong> {error}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {!isLoading && !plannerResponse && !explainerResponse && !error && (
-              <Card className="flex flex-col justify-center items-center h-96 p-6 text-center">
-                <div className="space-y-4">
-                  <div className="relative">
-                    <FileText className="h-16 w-16 text-muted-foreground/50 mx-auto" />
-                    <Sparkles className="h-6 w-6 text-primary absolute -top-1 -right-1" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-semibold">Ready to Plan</h3>
-                    <p className="text-muted-foreground max-w-md">
-                      Enter your shipment goal to get started. The AI Copilot will analyze routes and provide you with an optimal plan.
-                    </p>
-                  </div>
+              {activeTab === "planner" && (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowComparison(!showComparison)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      !showComparison 
+                        ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                        : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    {!showComparison ? 'Compare Routes' : 'Back to Planner'}
+                  </button>
                 </div>
-              </Card>
-            )}
-
-            {/* Main results view */}
-            {!isLoading && (plannerResponse || explainerResponse) && (
-              <Card className="divide-y">
-                <div className="p-6">
-                  <ResultsDisplay plannerResponse={plannerResponse} explanation={explainerResponse} />
+              )}
                 </div>
                 
-                <div className="px-6 py-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-lg font-semibold">Route Analysis</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {selectedRoute ? `Viewing details for ${selectedRoute.route_name}` : 'Select a route to view detailed analysis'}
-                      </p>
-                    </div>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setIsDrawerOpen(true)}
-                      className="flex items-center gap-2"
-                    >
-                      <Route className="h-4 w-4" />
-                      See All Routes
-                    </Button>
-                  </div>
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+              {/* Left Section - Chat Interface and Planner/Visualizations */}
+              <div className="xl:col-span-3 space-y-6">
+                {/* Chat Interface */}
+                <div>
+                  <ChatInterface 
+                    messages={chatMessages}
+                    isProcessing={isProcessing}
+                    onSendMessage={(message) => {
+                      // Add user message to chat
+                      addChatMessage({
+                        id: Date.now().toString(),
+                        content: message,
+                        sender: "user",
+                        timestamp: new Date()
+                      });
+                      
+                      // Parse message and plan shipment
+                      parseUserMessage(message);
+                    }}
+                  />
                 </div>
 
-                <div className="p-6">
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-                    <div>
-                      <RouteTimeline segments={selectedRouteData?.segments ?? null} isLoading={!!isAnalysisLoading} />
-                    </div>
-                    <div className="space-y-6">
-                      <RouteAnalysis 
-                        route={selectedRoute} 
-                        analysis={selectedRouteData?.analysis ?? null} 
-                        isLoading={!!isAnalysisLoading} 
+                {/* Content based on active tab */}
+                {activeTab === "planner" && (
+                  <div className="space-y-6">
+                    {!showComparison ? (
+                      <div className="space-y-6">
+                        {/* Route cards will be displayed here */}
+                        {plannerResponse && (
+                          <>
+                            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                              <h3 className="text-base font-medium text-blue-800 mb-2">Available Routes</h3>
+                              <p className="text-sm text-blue-700">
+                                I've found {shipmentRoutes.length} routes from {origin} to {destination}. 
+                                Click on any route card below to see more details.
+                              </p>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {shipmentRoutes.map(route => {
+                              const isRecommended = route.name === recommendedRoute;
+                              const isSelected = selectedRoutes.includes(route.name);
+                              
+                              return (
+                                <div 
+                                  key={route.id}
+                                  className={`rounded-xl overflow-hidden transition-all cursor-pointer ${
+                                    isRecommended ? 'ring-2 ring-blue-500' : 'hover:shadow-md'
+                                  }`}
+                                  onClick={() => {
+                                    // Handle route selection
+                                    const routeName = route.name;
+                                    
+                                    // Add message about route selection
+                                    const loadingId = Date.now().toString();
+                                    addChatMessage({
+                                      id: loadingId,
+                                      content: `Analyzing ${routeName} in detail...`,
+                                      sender: "explainer",
+                                      timestamp: new Date(),
+                                      isLoading: true
+                                    });
+                                    
+                                    // Set as selected route
+                                    setSelectedRoutes([routeName]);
+                                    
+                                    // Find the route
+                                    const selectedRoute = shipmentRoutes.find(r => r.name === routeName);
+                                    if (selectedRoute) {
+                                      // Convert to ShipmentRoute format
+                                      const routeData: ShipmentRoute = {
+                                        route_name: selectedRoute.name,
+                                        origin,
+                                        destination,
+                                        mode_of_transport: selectedRoute.segments[0].mode === 'ocean' ? 'sea' : 
+                                                          selectedRoute.segments[0].mode === 'air' ? 'air' : 'road',
+                                        base_cost_usd: selectedRoute.totalCost,
+                                        transit_time_days: selectedRoute.totalDuration,
+                                        risk_factors: {
+                                          customs_delay_days: selectedRoute.riskFactors.customs,
+                                          weather_risk_score: selectedRoute.riskFactors.weather,
+                                          port_congestion_risk_score: selectedRoute.riskFactors.congestion
+                                        }
+                                      };
+                                      
+                                      // Get cost analysis
+                                      getRouteCostAnalysis(routeData).then(costResult => {
+                                        setCostAnalysis(costResult);
+                                        
+                                        // Update message
+                                        const costFactors = costResult.slice(0, 2).map(f => `- ${f.factor_name}: ${f.impact} impact`).join('\n');
+                                        setChatMessages(prev => prev.map(msg => 
+                                          msg.id === loadingId ? {
+                                            ...msg,
+                                            content: `${routeName} Analysis:\n\nCost: $${selectedRoute.totalCost.toLocaleString()}\nDuration: ${selectedRoute.totalDuration} days\nRisk Score: ${selectedRoute.riskScore.toFixed(1)}/10\n\nKey cost factors:\n${costFactors}`,
+                                            isLoading: false
+                                          } : msg
+                                        ));
+                                      }).catch(error => {
+                                        console.error("Error getting cost analysis:", error);
+                                        setChatMessages(prev => prev.map(msg => 
+                                          msg.id === loadingId ? {
+                                            ...msg,
+                                            content: `Error analyzing ${routeName}. Please try again.`,
+                                            isLoading: false
+                                          } : msg
+                                        ));
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <div className="bg-white border border-gray-200 rounded-xl shadow-sm">
+                                    <div className="p-4">
+                                      <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                            route.segments[0].mode === 'ocean' ? 'bg-blue-100 text-blue-700' :
+                                            route.segments[0].mode === 'air' ? 'bg-purple-100 text-purple-700' :
+                                            'bg-green-100 text-green-700'
+                                          }`}>
+                                            {route.segments[0].mode === 'ocean' ? (
+                                              <Ship className="h-4 w-4" />
+                                            ) : route.segments[0].mode === 'air' ? (
+                                              <Plane className="h-4 w-4" />
+                                            ) : (
+                                              <Truck className="h-4 w-4" />
+                                            )}
+                                          </div>
+                                          <h3 className="font-medium text-gray-900">{route.name}</h3>
+                                        </div>
+                                        {isRecommended && (
+                                          <div className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full font-medium">
+                                            Recommended
+                                          </div>
+                                        )}
+                                      </div>
+                                      
+                                      <div className="space-y-3 text-sm">
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Cost</span>
+                                          <span className="font-medium text-gray-900">${route.totalCost.toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Duration</span>
+                                          <span className="font-medium text-gray-900">{route.totalDuration} days</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-500">Risk Score</span>
+                                          <span className={`font-medium ${
+                                            route.riskScore < 3 ? 'text-green-600' :
+                                            route.riskScore < 7 ? 'text-orange-600' :
+                                            'text-red-600'
+                                          }`}>{route.riskScore.toFixed(1)}/10</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <RouteComparison 
+                        routes={shipmentRoutes}
+                        selectedRoutes={selectedRoutes}
+                        onSelectRoute={(routeName) => {
+                          if (selectedRoutes.includes(routeName)) {
+                            setSelectedRoutes(selectedRoutes.filter(r => r !== routeName));
+                          } else {
+                            setSelectedRoutes([...selectedRoutes, routeName]);
+                          }
+                        }}
+                        onCompare={(routeNames) => {
+                          setSelectedRoutes(routeNames);
+                          // Add comparison message to chat
+                          if (routeNames.length > 0) {
+                            addChatMessage({
+                              id: Date.now().toString(),
+                              content: `I've compared ${routeNames.join(', ')}. The analysis shows trade-offs between cost, transit time, and risk factors. You can see the detailed comparison in the charts below.`,
+                              sender: "explainer",
+                              timestamp: new Date()
+                            });
+                          }
+                        }}
+                        recommendedRoute={recommendedRoute}
                       />
-                      <RiskAnalysis 
-                        analysis={riskAnalysis}
-                        isLoading={isRiskLoading}
-                        onRunAnalysis={handleRunRiskAnalysis}
-                        hasPlanned={!!plannerResponse && !!selectedRoute}
+                    )}
+                  </div>
+                )}
+                
+                {activeTab === "analytics" && (
+                  <VisualizationPanel />
+                )}
+              </div>
+              
+              {/* Right Panel - What-If Simulator */}
+              <div className="xl:col-span-1">
+                <WhatIfSimulator 
+                  fuelCostIncrease={whatIfParams.fuelCostIncrease}
+                  customsDelay={whatIfParams.customsDelay}
+                  weatherRisk={whatIfParams.weatherRisk}
+                  onParamChange={(param, value) => {
+                    setWhatIfParams(prev => ({
+                      ...prev,
+                      [param]: value
+                    }));
+                    
+                    // Add message to chat when parameters change significantly
+                    if (
+                      (param === 'fuelCostIncrease' && Math.abs(value - whatIfParams.fuelCostIncrease) >= 15) ||
+                      (param === 'customsDelay' && Math.abs(value - whatIfParams.customsDelay) >= 3) ||
+                      (param === 'weatherRisk' && value !== whatIfParams.weatherRisk)
+                    ) {
+                      addChatMessage({
+                        id: Date.now().toString(),
+                        content: `What-If scenario updated: ${
+                          param === 'fuelCostIncrease' ? `Fuel cost ${value > 0 ? 'increased' : 'decreased'} by ${Math.abs(value)}%` :
+                          param === 'customsDelay' ? `Customs delay ${value > 0 ? 'increased' : 'decreased'} by ${Math.abs(value)} days` :
+                          `Weather risk set to ${value}`
+                        }. This will affect route costs and transit times.`,
+                        sender: "whatif",
+                        timestamp: new Date()
+                      });
+                    }
+                  }}
+                  onRecalculate={() => {
+                    // Add recalculation message to chat
+                    addChatMessage({
+                      id: Date.now().toString(),
+                      content: `Recalculating routes with updated parameters: Fuel cost ${whatIfParams.fuelCostIncrease > 0 ? '+' : ''}${whatIfParams.fuelCostIncrease}%, Customs delay ${whatIfParams.customsDelay > 0 ? '+' : ''}${whatIfParams.customsDelay} days, Weather risk ${whatIfParams.weatherRisk}.`,
+                      sender: "whatif",
+                      timestamp: new Date()
+                    });
+                  }}
                       />
                     </div>
                   </div>
-                </div>
-              </Card>
-            )}
           </div>
         </div>
-      </main>
-      
-      {/* All Routes Drawer */}
-      <AllRoutesDrawer
-        open={isDrawerOpen}
-        onOpenChange={setIsDrawerOpen}
-        routes={routesData}
-        selectedRoute={selectedRoute}
-        onSelectRoute={handleRouteSelect}
-        onRunCostAnalysis={handleRouteCostAnalysis}
-        onRunRiskAnalysis={handleRouteRiskAnalysis}
-        costAnalysisData={routeCostAnalyses}
-        riskAnalysisData={routeRiskAnalyses}
-        loadingStatus={routeAnalysisLoading}
-      />
+      </div>
     </div>
   );
-};
-
-export default App;
+}
