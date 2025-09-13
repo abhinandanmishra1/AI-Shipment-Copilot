@@ -1,0 +1,5 @@
+{
+  "name": "AI Shipment Planning Copilot",
+  "description": "An AI-powered copilot to help plan shipment routes by analyzing cost, time, and risk factors, visualizing trade-offs, and running what-if scenarios.",
+  "requestFramePermissions": []
+}
