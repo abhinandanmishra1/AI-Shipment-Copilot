@@ -1,4 +1,6 @@
 import React from 'react';
+import { Tabs, TabsList, TabsTrigger } from './ui/tabs';
+import { Loader2 } from 'lucide-react';
 import type { ShipmentRoute } from '../types';
 
 interface RouteTabsProps {
@@ -10,30 +12,26 @@ interface RouteTabsProps {
 
 export const RouteTabs: React.FC<RouteTabsProps> = ({ routes, selectedRoute, onSelectRoute, loadingStatus = {} }) => {
   return (
-    <nav className="-mb-px flex space-x-6 overflow-x-auto" aria-label="Tabs">
+    <Tabs value={selectedRoute?.route_name || ''} className="w-full">
+      <TabsList className="grid w-full grid-cols-5 h-auto p-1">
       {routes.map((route) => {
         const isLoading = loadingStatus[route.route_name] ?? false;
         return (
-          <button
+            <TabsTrigger
             key={route.route_name}
+              value={route.route_name}
             onClick={() => onSelectRoute(route)}
             disabled={isLoading}
-            className={`
-              ${selectedRoute?.route_name === route.route_name
-                ? 'border-blue-500 text-blue-600'
-                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-              }
-              flex items-center gap-2 whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm focus:outline-none transition-colors duration-200 disabled:opacity-50
-            `}
-            aria-current={selectedRoute?.route_name === route.route_name ? 'page' : undefined}
+              className="flex items-center gap-2 text-xs py-2 px-3 data-[state=active]:bg-background data-[state=active]:text-foreground"
           >
-            <span>{route.route_name}</span>
+              <span className="truncate">{route.route_name.replace('Route ', '')}</span>
             {isLoading && (
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                <Loader2 className="h-3 w-3 animate-spin" />
             )}
-          </button>
+            </TabsTrigger>
         )
       })}
-    </nav>
+      </TabsList>
+    </Tabs>
   );
 };

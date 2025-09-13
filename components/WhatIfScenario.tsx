@@ -1,5 +1,9 @@
 
 import React from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Label } from './ui/label';
+import { Slider } from './ui/slider';
+import { FlaskConical, Fuel, Clock } from 'lucide-react';
 import type { WhatIfParams } from '../types';
 
 interface WhatIfScenarioProps {
@@ -18,40 +22,55 @@ export const WhatIfScenario: React.FC<WhatIfScenarioProps> = ({ params, setParam
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md">
-      <h2 className="text-xl font-semibold mb-4 text-slate-700">2. Run What-If Scenarios</h2>
-      <div className="space-y-6">
-        <div>
-          <label htmlFor="fuel-cost" className="block text-sm font-medium text-slate-600 mb-2">
-            Fuel Cost Increase: <span className="font-bold">{params.fuelCostIncreasePercentage}%</span>
-          </label>
-          <input
-            id="fuel-cost"
-            type="range"
-            min="0"
-            max="100"
-            step="5"
-            value={params.fuelCostIncreasePercentage}
-            onChange={handleFuelChange}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FlaskConical className="h-5 w-5 text-primary" />
+          What-If Scenarios
+        </CardTitle>
+        <CardDescription>
+          Adjust parameters to see how changes affect your routes
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="space-y-3">
+          <Label className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Fuel className="h-4 w-4" />
+              Fuel Cost Increase
+            </span>
+            <span className="font-mono text-sm bg-muted px-2 py-1 rounded">
+              {params.fuelCostIncreasePercentage}%
+            </span>
+          </Label>
+          <Slider
+            value={[params.fuelCostIncreasePercentage]}
+            onValueChange={(value) => setParams(prev => ({ ...prev, fuelCostIncreasePercentage: value[0] }))}
+            max={100}
+            step={5}
+            className="w-full"
           />
         </div>
-        <div>
-          <label htmlFor="customs-delay" className="block text-sm font-medium text-slate-600 mb-2">
-            Additional Customs Delay: <span className="font-bold">{params.additionalCustomsDelayDays} days</span>
-          </label>
-          <input
-            id="customs-delay"
-            type="range"
-            min="0"
-            max="10"
-            step="1"
-            value={params.additionalCustomsDelayDays}
-            onChange={handleDelayChange}
-            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+        
+        <div className="space-y-3">
+          <Label className="flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Clock className="h-4 w-4" />
+              Additional Customs Delay
+            </span>
+            <span className="font-mono text-sm bg-muted px-2 py-1 rounded">
+              {params.additionalCustomsDelayDays} days
+            </span>
+          </Label>
+          <Slider
+            value={[params.additionalCustomsDelayDays]}
+            onValueChange={(value) => setParams(prev => ({ ...prev, additionalCustomsDelayDays: value[0] }))}
+            max={10}
+            step={1}
+            className="w-full"
           />
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 };

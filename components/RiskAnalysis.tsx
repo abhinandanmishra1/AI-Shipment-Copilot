@@ -1,7 +1,10 @@
 import React from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+import { Alert, AlertDescription } from './ui/alert';
+import { AlertTriangle, CheckCircle, Loader2, Shield } from 'lucide-react';
 import type { RiskAnalysisResponse } from '../types';
-import { WarningIcon } from './icons/WarningIcon';
-import { CheckCircleIcon } from './icons/CheckCircleIcon';
 
 interface RiskAnalysisProps {
   analysis: RiskAnalysisResponse | null;
@@ -11,78 +14,120 @@ interface RiskAnalysisProps {
 }
 
 const SeverityBadge: React.FC<{ severity: 'High' | 'Medium' | 'Low' }> = ({ severity }) => {
-  const baseClasses = 'px-2 py-0.5 text-xs font-semibold rounded-full';
-  const colorClasses = {
-    High: 'bg-red-100 text-red-800',
-    Medium: 'bg-yellow-100 text-yellow-800',
-    Low: 'bg-orange-100 text-orange-800',
+  const variants = {
+    High: 'destructive',
+    Medium: 'secondary',
+    Low: 'outline',
+  } as const;
+  
+  return (
+    <Badge variant={variants[severity]} className="text-xs">
+      {severity} Risk
+    </Badge>
+  );
+};
+
+const RiskIcon: React.FC<{ severity: 'High' | 'Medium' | 'Low' }> = ({ severity }) => {
+  const colors = {
+    High: 'text-red-600',
+    Medium: 'text-yellow-600', 
+    Low: 'text-orange-600',
   };
-  return <span className={`${baseClasses} ${colorClasses[severity]}`}>{severity} Risk</span>;
+  
+  return <AlertTriangle className={`h-4 w-4 ${colors[severity]}`} />;
 };
 
 
 export const RiskAnalysis: React.FC<RiskAnalysisProps> = ({ analysis, isLoading, onRunAnalysis, hasPlanned }) => {
   return (
-    <div className="bg-white p-6 rounded-lg shadow-md h-full flex flex-col">
-      <h2 className="text-xl font-semibold mb-4 text-slate-700 shrink-0">
-        Risk Analysis
-      </h2>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="shrink-0">
+        <CardTitle className="flex items-center gap-2">
+          <Shield className="h-5 w-5" />
+          Risk Analysis
+        </CardTitle>
+      </CardHeader>
 
       {!hasPlanned && (
-         <div className="flex-grow flex flex-col justify-center items-center text-center text-slate-500 p-4">
-          <p>Complete a shipment plan to enable risk analysis.</p>
-        </div>
+        <CardContent className="flex-grow flex flex-col justify-center items-center text-center">
+          <Shield className="h-12 w-12 text-muted-foreground/50 mb-4" />
+          <p className="text-muted-foreground">
+            Complete a shipment plan to enable risk analysis
+          </p>
+        </CardContent>
       )}
 
       {hasPlanned && !analysis && (
-        <div className="flex-grow flex flex-col justify-center items-center text-center">
-            <p className="text-slate-600 mb-4">Check the selected route for potential issues based on your constraints.</p>
-            <button
-                onClick={onRunAnalysis}
-                disabled={isLoading}
-                className="bg-slate-700 text-white font-bold py-2 px-4 rounded-md hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-500 disabled:bg-slate-400 transition-colors"
-            >
-                {isLoading ? 'Analyzing...' : 'Run Risk Analysis'}
-            </button>
-        </div>
+        <CardContent className="flex-grow flex flex-col justify-center items-center text-center space-y-4">
+          <p className="text-muted-foreground">
+            Check the selected route for potential issues based on your constraints
+          </p>
+          <Button
+            onClick={onRunAnalysis}
+            disabled={isLoading}
+            className="gap-2"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Shield className="h-4 w-4" />
+                Run Risk Analysis
+              </>
+            )}
+          </Button>
+        </CardContent>
       )}
 
       {isLoading && hasPlanned && (
-        <div className="flex-grow flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-600"></div>
-          <p className="ml-3 text-slate-600">Analyzing risks...</p>
-        </div>
+        <CardContent className="flex-grow flex items-center justify-center">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-muted-foreground">Analyzing risks...</p>
+          </div>
+        </CardContent>
       )}
 
       {analysis && !isLoading && (
-        <div className="flex-grow overflow-y-auto -mr-2 pr-2">
-            {analysis.risks.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center text-green-700 bg-green-50 rounded-lg p-4">
-                    <CheckCircleIcon className="w-12 h-12 text-green-500 mb-3" />
-                    <h3 className="font-semibold text-lg">Good to Go</h3>
-                    <p className="text-sm">No significant risks were identified for this route based on the provided data and constraints.</p>
+        <CardContent className="flex-grow overflow-y-auto space-y-4">
+          {analysis.risks.length === 0 ? (
+            <Alert className="border-green-200 bg-green-50">
+              <CheckCircle className="h-4 w-4 text-green-600" />
+              <AlertDescription>
+                <div className="space-y-2">
+                  <h3 className="font-semibold text-green-800">All Clear</h3>
+                  <p className="text-sm text-green-700">
+                    No significant risks identified for this route based on your constraints
+                  </p>
                 </div>
-            ) : (
-                <div className="space-y-4">
-                    {analysis.risks.map((risk, index) => (
-                        <div key={index} className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                            <div className="flex items-start gap-3">
-                                <WarningIcon className="h-5 w-5 text-yellow-600 shrink-0 mt-0.5" />
-                                <div>
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h4 className="font-semibold text-slate-800">{risk.risk_name}</h4>
-                                        <SeverityBadge severity={risk.severity} />
-                                    </div>
-                                    <p className="text-slate-600 text-sm mb-2">{risk.description}</p>
-                                    <p className="text-xs text-slate-500"><strong className="font-medium text-slate-600">Mitigation:</strong> {risk.mitigation}</p>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="space-y-3">
+              {analysis.risks.map((risk, index) => (
+                <Alert key={index} className="border-yellow-200 bg-yellow-50">
+                  <RiskIcon severity={risk.severity} />
+                  <AlertDescription>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-yellow-900">{risk.risk_name}</h4>
+                        <SeverityBadge severity={risk.severity} />
+                      </div>
+                      <p className="text-sm text-yellow-800">{risk.description}</p>
+                      <div className="text-xs text-yellow-700 bg-yellow-100 p-2 rounded">
+                        <strong>Mitigation:</strong> {risk.mitigation}
+                      </div>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              ))}
+            </div>
+          )}
+        </CardContent>
       )}
-    </div>
+    </Card>
   );
 };

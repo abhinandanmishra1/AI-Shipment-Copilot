@@ -1,8 +1,9 @@
 import React from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Alert, AlertDescription } from './ui/alert';
+import { CheckCircle, XCircle, Info, Lightbulb, Route } from 'lucide-react';
 import type { PlannerResponse, StructuredExplanation, ProsCons } from '../types';
-import { InfoIcon } from './icons/InfoIcon';
-import { CheckIcon } from './icons/CheckIcon';
-import { XIcon } from './icons/XIcon';
 
 interface ResultsDisplayProps {
   plannerResponse: PlannerResponse | null;
@@ -14,17 +15,17 @@ const ProsConsList: React.FC<{ list: string[]; type: 'pros' | 'cons' }> = ({ lis
   
   const isPros = type === 'pros';
   const icon = isPros ? 
-    <CheckIcon className="h-5 w-5 text-green-500 shrink-0" /> : 
-    <XIcon className="h-5 w-5 text-red-500 shrink-0" />;
+    <CheckCircle className="h-4 w-4 text-green-600 shrink-0" /> : 
+    <XCircle className="h-4 w-4 text-red-600 shrink-0" />;
   const title = isPros ? 'Pros' : 'Cons';
-  const textColor = isPros ? 'text-slate-700' : 'text-slate-700';
+  const textColor = isPros ? 'text-foreground' : 'text-foreground';
 
   return (
     <div>
-      <h4 className="text-sm font-semibold mb-2 text-slate-600">{title}</h4>
+      <h4 className="text-sm font-semibold mb-3 text-muted-foreground">{title}</h4>
       <ul className="space-y-2">
         {list.map((item, index) => (
-          <li key={index} className={`flex items-start gap-2 text-sm ${textColor}`}>
+          <li key={index} className={`flex items-start gap-3 text-sm ${textColor}`}>
             {icon}
             <span>{item}</span>
           </li>
@@ -39,45 +40,67 @@ export const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ plannerResponse,
   if (!plannerResponse) return null;
 
   return (
-    <div>
-        <h2 className="text-xl font-semibold mb-4 text-slate-700">AI Copilot Analysis</h2>
+    <div className="space-y-6">
+      <div className="flex items-center gap-2">
+        <Lightbulb className="h-6 w-6 text-primary" />
+        <h2 className="text-2xl font-bold">AI Copilot Analysis</h2>
+      </div>
         
-        {/* Suggested Route */}
-        <div className="mb-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
-            <h3 className="text-lg font-semibold text-blue-800">Suggested Route: <span className="font-bold">{plannerResponse.suggested_route}</span></h3>
-            <p className="text-blue-700 mt-1">{plannerResponse.reason}</p>
-        </div>
-        
-        {explanation && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Suggested Route Pros & Cons */}
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                    <h3 className="font-bold text-slate-800 mb-3">Analysis of Suggested Route</h3>
-                    <div className="space-y-4">
-                        <ProsConsList list={explanation.suggested_route_summary.pros} type="pros" />
-                        <ProsConsList list={explanation.suggested_route_summary.cons} type="cons" />
-                    </div>
-                </div>
-
-                {/* Alternatives */}
-                <div className="space-y-4">
-                    <h3 className="font-bold text-slate-800 flex items-center">
-                       <InfoIcon className="h-5 w-5 mr-2 text-slate-500" />
-                        Alternative Options
-                    </h3>
-                    {explanation.alternatives.slice(0, 2).map((alt) => (
-                        <div key={alt.route_name} className="bg-white p-4 rounded-lg border border-slate-200">
-                           <h4 className="font-semibold text-slate-700">{alt.route_name}</h4>
-                           <p className="text-sm text-slate-600 mt-1 mb-3">{alt.summary}</p>
-                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                             <ProsConsList list={alt.pros} type="pros" />
-                             <ProsConsList list={alt.cons} type="cons" />
-                           </div>
-                        </div>
-                    ))}
-                </div>
+      {/* Suggested Route */}
+      <Alert className="border-primary/20 bg-primary/5">
+        <Route className="h-4 w-4" />
+        <AlertDescription>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Recommended Route:</span>
+              <Badge variant="default" className="font-semibold">
+                {plannerResponse.suggested_route}
+              </Badge>
             </div>
-        )}
+            <p className="text-sm">{plannerResponse.reason}</p>
+          </div>
+        </AlertDescription>
+      </Alert>
+        
+      {explanation && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Suggested Route Analysis */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Recommended Route Analysis</CardTitle>
+              <CardDescription>
+                Detailed breakdown of the suggested option
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <ProsConsList list={explanation.suggested_route_summary.pros} type="pros" />
+              <ProsConsList list={explanation.suggested_route_summary.cons} type="cons" />
+            </CardContent>
+          </Card>
+
+          {/* Alternative Options */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Info className="h-5 w-5 text-muted-foreground" />
+              <h3 className="text-lg font-semibold">Alternative Options</h3>
+            </div>
+            {explanation.alternatives.slice(0, 2).map((alt) => (
+              <Card key={alt.route_name}>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">{alt.route_name}</CardTitle>
+                  <CardDescription className="text-sm">
+                    {alt.summary}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <ProsConsList list={alt.pros} type="pros" />
+                  <ProsConsList list={alt.cons} type="cons" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

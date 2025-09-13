@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Card } from './components/ui/card';
+import { Alert, AlertDescription } from './components/ui/alert';
+import { Separator } from './components/ui/separator';
+import { FileText, AlertCircle, Sparkles } from 'lucide-react';
 import { Header } from './components/Header';
 import { InputForm } from './components/InputForm';
 import { ResultsDisplay } from './components/ResultsDisplay';
@@ -180,76 +184,86 @@ const App: React.FC = () => {
   const isAnalysisLoading = selectedRoute ? routeLoadingStatus[selectedRoute.route_name] : false;
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-800">
+    <div className="min-h-screen bg-background">
       <Header />
-      <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      <main className="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
-          <div className="lg:col-span-1 space-y-8">
+          <div className="lg:col-span-1 space-y-6">
             <InputForm onPlanShipment={handlePlanShipment} isLoading={isLoading} />
             <WhatIfScenario params={whatIfParams} setParams={setWhatIfParams} />
           </div>
 
-          <div className="lg:col-span-2 space-y-8">
+          <div className="lg:col-span-2 space-y-6">
             {isLoading && (
-              <div className="flex justify-center items-center h-96 bg-white rounded-lg shadow-md">
+              <Card className="flex justify-center items-center h-96">
                 <LoadingSpinner />
-              </div>
+              </Card>
             )}
+            
             {!isLoading && error && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg shadow-md" role="alert">
-                <strong className="font-bold">Error:</strong>
-                <span className="block sm:inline ml-2">{error}</span>
-              </div>
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Error:</strong> {error}
+                </AlertDescription>
+              </Alert>
             )}
 
             {!isLoading && !plannerResponse && !explainerResponse && !error && (
-              <div className="flex flex-col justify-center items-center h-96 bg-white rounded-lg shadow-md p-6 text-center">
-                 <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-slate-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                <h3 className="text-xl font-semibold text-slate-700">Ready to Plan</h3>
-                <p className="text-slate-500 mt-2">Enter your shipment goal to get started. The AI Copilot will analyze routes and provide you with an optimal plan.</p>
-              </div>
+              <Card className="flex flex-col justify-center items-center h-96 p-6 text-center">
+                <div className="space-y-4">
+                  <div className="relative">
+                    <FileText className="h-16 w-16 text-muted-foreground/50 mx-auto" />
+                    <Sparkles className="h-6 w-6 text-primary absolute -top-1 -right-1" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-semibold">Ready to Plan</h3>
+                    <p className="text-muted-foreground max-w-md">
+                      Enter your shipment goal to get started. The AI Copilot will analyze routes and provide you with an optimal plan.
+                    </p>
+                  </div>
+                </div>
+              </Card>
             )}
 
             {/* Main results view */}
             {!isLoading && (plannerResponse || explainerResponse) && (
-               <div className="bg-white rounded-lg shadow-md divide-y divide-slate-200">
+              <Card className="divide-y">
                 <div className="p-6">
-                    <ResultsDisplay plannerResponse={plannerResponse} explanation={explainerResponse} />
+                  <ResultsDisplay plannerResponse={plannerResponse} explanation={explainerResponse} />
                 </div>
                 
-                <div className="px-6">
-                    <RouteTabs 
-                        routes={routesData} 
-                        selectedRoute={selectedRoute} 
-                        onSelectRoute={handleRouteSelect} 
-                        loadingStatus={routeLoadingStatus}
-                    />
+                <div className="px-6 py-4">
+                  <RouteTabs 
+                    routes={routesData} 
+                    selectedRoute={selectedRoute} 
+                    onSelectRoute={handleRouteSelect} 
+                    loadingStatus={routeLoadingStatus}
+                  />
                 </div>
 
                 <div className="p-6">
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                        <div>
-                            <RouteTimeline segments={selectedRouteData?.segments ?? null} isLoading={!!isAnalysisLoading} />
-                        </div>
-                        <div className="space-y-8">
-                            <RouteAnalysis 
-                                route={selectedRoute} 
-                                analysis={selectedRouteData?.analysis ?? null} 
-                                isLoading={!!isAnalysisLoading} 
-                            />
-                             <RiskAnalysis 
-                                analysis={riskAnalysis}
-                                isLoading={isRiskLoading}
-                                onRunAnalysis={handleRunRiskAnalysis}
-                                hasPlanned={!!plannerResponse && !!selectedRoute}
-                            />
-                        </div>
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div>
+                      <RouteTimeline segments={selectedRouteData?.segments ?? null} isLoading={!!isAnalysisLoading} />
                     </div>
+                    <div className="space-y-6">
+                      <RouteAnalysis 
+                        route={selectedRoute} 
+                        analysis={selectedRouteData?.analysis ?? null} 
+                        isLoading={!!isAnalysisLoading} 
+                      />
+                      <RiskAnalysis 
+                        analysis={riskAnalysis}
+                        isLoading={isRiskLoading}
+                        onRunAnalysis={handleRunRiskAnalysis}
+                        hasPlanned={!!plannerResponse && !!selectedRoute}
+                      />
+                    </div>
+                  </div>
                 </div>
-               </div>
+              </Card>
             )}
           </div>
         </div>
