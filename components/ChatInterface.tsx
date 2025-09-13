@@ -50,18 +50,26 @@ const agentConfig = {
   },
 };
 
+interface SuggestedPrompt {
+  id: string;
+  text: string;
+}
+
 interface ChatInterfaceProps {
   messages?: Message[];
   onSendMessage?: (message: string) => void;
   isProcessing?: boolean;
+  suggestedPrompts?: SuggestedPrompt[];
 }
 
 export function ChatInterface({ 
   messages = [],
   onSendMessage,
-  isProcessing = false
+  isProcessing = false,
+  suggestedPrompts = []
 }: ChatInterfaceProps) {
   const [newMessage, setNewMessage] = useState("");
+  const [visiblePrompts, setVisiblePrompts] = useState<SuggestedPrompt[]>(suggestedPrompts);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   const handleSendMessage = () => {
@@ -80,15 +88,46 @@ export function ChatInterface({
     }
   };
   
-  // Auto-scroll to bottom when messages change
+  // Update visible prompts when suggestedPrompts prop changes
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      }
+    setVisiblePrompts(suggestedPrompts);
+  }, [suggestedPrompts]);
+
+  // Create a ref for the messages end element
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  
+  // Scroll to bottom function
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  
+  // Auto-scroll to bottom when messages change or processing state changes
+  useEffect(() => {
+    // Immediate scroll attempt
+    scrollToBottom();
+    
+    // Add multiple timeouts to ensure scroll happens after all DOM updates and animations
+    const timeoutIds = [
+      setTimeout(scrollToBottom, 100),
+      setTimeout(scrollToBottom, 300),
+      setTimeout(scrollToBottom, 500)
+    ];
+    
+    return () => timeoutIds.forEach(id => clearTimeout(id));
+  }, [messages, isProcessing]);
+  
+  // Handle clicking a suggested prompt
+  const handleSuggestedPromptClick = (prompt: SuggestedPrompt) => {
+    if (isProcessing) return;
+    
+    // Remove this prompt from visible prompts
+    setVisiblePrompts(prev => prev.filter(p => p.id !== prompt.id));
+    
+    // Send the message
+    if (onSendMessage) {
+      onSendMessage(prompt.text);
     }
-  }, [messages]);
+  };
 
   return (
     <Card className="h-[500px] flex flex-col bg-white border border-gray-200 rounded-xl shadow-sm">
@@ -190,10 +229,30 @@ export function ChatInterface({
               </div>
             </div>
           )}
+          
+          {/* Invisible element to scroll to */}
+          <div ref={messagesEndRef} style={{ height: "1px", opacity: 0 }} />
         </div>
       </ScrollArea>
 
-      <div className="p-6 border-t border-gray-100">
+      <div className="p-6 border-t border-gray-100 space-y-4">
+        {/* Suggested Prompts */}
+        {visiblePrompts.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {visiblePrompts.map(prompt => (
+              <button
+                key={prompt.id}
+                onClick={() => handleSuggestedPromptClick(prompt)}
+                disabled={isProcessing}
+                className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-full border border-blue-200 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {prompt.text.length > 50 ? `${prompt.text.substring(0, 47)}...` : prompt.text}
+              </button>
+            ))}
+          </div>
+        )}
+        
+        {/* Input Area */}
         <div className="flex gap-3">
           <Input
             placeholder="Ask AI to plan shipments, analyze risks, or explain recommendations..."

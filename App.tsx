@@ -5,6 +5,7 @@ import { ChatInterface } from "./components/ChatInterface";
 import { VisualizationPanel } from "./components/VisualizationPanel";
 import { WhatIfSimulator } from "./components/WhatIfSimulator";
 import { RouteComparison } from "./components/RouteComparison";
+import { RouteDetailsDrawer } from "./components/RouteDetailsDrawer";
 import { shipmentRoutes } from "./data/routes";
 import { 
   getPlannerSuggestion, 
@@ -30,15 +31,36 @@ export default function App() {
     },
     {
       id: "welcome-2",
-      content: "Try asking me something like:\n• Plan a shipment from Shanghai to Los Angeles\n• Find the fastest route from Rotterdam to New York\n• Plan a shipment from Hamburg to Singapore with low cost and minimal risk",
+      content: "Try one of the suggested prompts below or type your own request.",
       sender: "planner",
       timestamp: new Date()
     }
   ]);
+  
+  // Suggested prompts
+  const [suggestedPrompts, setSuggestedPrompts] = useState([
+    {
+      id: "prompt-1",
+      text: "Plan a shipment of 100 containers from Shanghai to LA within 10 days, lowest cost."
+    },
+    {
+      id: "prompt-2",
+      text: "Find the fastest route from Rotterdam to New York with minimal customs delays."
+    },
+    {
+      id: "prompt-3",
+      text: "Plan a high-value electronics shipment from Tokyo to San Francisco with low risk."
+    }
+  ]);
+  
   const [selectedRoutes, setSelectedRoutes] = useState<string[]>([]);
   const [showComparison, setShowComparison] = useState(false);
   const [recommendedRoute, setRecommendedRoute] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Route details drawer state
+  const [isRouteDetailsOpen, setIsRouteDetailsOpen] = useState(false);
+  const [selectedRouteDetails, setSelectedRouteDetails] = useState<any>(null);
   
   // Shipment planning state
   const [origin, setOrigin] = useState("Shanghai");
@@ -49,6 +71,14 @@ export default function App() {
   const [explainerResponse, setExplainerResponse] = useState<any>(null);
   const [costAnalysis, setCostAnalysis] = useState<any>(null);
   const [riskAnalysis, setRiskAnalysis] = useState<any>(null);
+  
+  // Agent queue system
+  const [agentQueue, setAgentQueue] = useState<{
+    type: string;
+    action: () => Promise<void>;
+    message: string;
+  }[]>([]);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
   
   // What-If scenario parameters
   const [whatIfParams, setWhatIfParams] = useState({
@@ -73,6 +103,52 @@ export default function App() {
       }
     }
   };
+  
+  // Process the agent queue
+  useEffect(() => {
+    const processQueue = async () => {
+      // If there's an active agent or the queue is empty, do nothing
+      if (activeAgent || agentQueue.length === 0) return;
+      
+      // Get the next agent from the queue
+      const nextAgent = agentQueue[0];
+      setAgentQueue(prev => prev.slice(1));
+      
+      // Set the active agent
+      setActiveAgent(nextAgent.type);
+      setIsProcessing(true);
+      
+      // Add a message to indicate the agent is working
+      addChatMessage({
+        id: Date.now().toString(),
+        content: nextAgent.message,
+        sender: nextAgent.type,
+        timestamp: new Date(),
+        isLoading: true
+      });
+      
+      try {
+        // Execute the agent's action
+        await nextAgent.action();
+      } catch (error) {
+        console.error(`Error executing ${nextAgent.type} agent:`, error);
+        
+        // Add error message
+        addChatMessage({
+          id: Date.now().toString(),
+          content: `I encountered an error while processing your request. Please try again.`,
+          sender: nextAgent.type,
+          timestamp: new Date()
+        });
+      } finally {
+        // Clear the active agent
+        setActiveAgent(null);
+        setIsProcessing(false);
+      }
+    };
+    
+    processQueue();
+  }, [agentQueue, activeAgent]);
   
   // Parse user message to extract planning information
   const parseUserMessage = (message: string) => {
@@ -110,8 +186,16 @@ export default function App() {
     setConstraints(newConstraints);
     setGoal(message);
     
-    // Start planning process
-    handlePlanShipment(newOrigin, newDestination, message, newConstraints);
+    // Add planning task to the queue
+    const planningAction = async () => {
+      await handlePlanShipment(newOrigin, newDestination, message, newConstraints);
+    };
+    
+    setAgentQueue(prev => [...prev, {
+      type: "planner",
+      action: planningAction,
+      message: "Planning your shipment..."
+    }]);
   };
   
   // Handle shipment planning
@@ -125,21 +209,12 @@ export default function App() {
     
     console.log("Planning shipment with:", { planOrigin, planDestination, planGoal, planConstraints });
     
-    setIsProcessing(true);
     setPlannerResponse(null);
     setExplainerResponse(null);
     setCostAnalysis(null);
     setRiskAnalysis(null);
     
-    // Add loading message
-    const loadingMessageId = Date.now().toString();
-    addChatMessage({
-      id: loadingMessageId,
-      content: "Planning your shipment...",
-      sender: "planner",
-      timestamp: new Date(),
-      isLoading: true
-    });
+    // The loading message is now handled by the queue system
     
     try {
       // Convert routes to ShipmentRoute format
@@ -166,44 +241,42 @@ export default function App() {
       );
       setPlannerResponse(plannerResult);
 
-      // Replace loading message with actual response
-      setChatMessages(prev => prev.map(msg => 
-        msg.id === loadingMessageId ? {
-          ...msg,
-          content: `Based on your requirements, I recommend ${plannerResult.suggested_route}. ${plannerResult.reason}`,
-          isLoading: false
-        } : msg
-      ));
-      
-      // Add explainer message
+      // Add planner response message
       addChatMessage({
         id: Date.now().toString(),
-        content: "Analyzing route options in detail...",
-        sender: "explainer",
-        timestamp: new Date(),
-        isLoading: true
+        content: `Based on your requirements, I recommend ${plannerResult.suggested_route}. ${plannerResult.reason}`,
+        sender: "planner",
+        timestamp: new Date()
       });
       
-      // Get explainer analysis
-      const explainerResult = await getStructuredExplainerAnalysis(
-        routesWithLocations,
-        plannerResult
-      );
+      // Queue explainer analysis
+      const explainerAction = async () => {
+        // Get explainer analysis
+        const explainerResult = await getStructuredExplainerAnalysis(
+          routesWithLocations,
+          plannerResult
+        );
         setExplainerResponse(explainerResult);
 
-      // Add explainer message
-      const summaryPoints = explainerResult.suggested_route_summary.pros
-        .slice(0, 2)
-        .map(pro => `✓ ${pro}`)
-        .join("\n");
-      
-      setChatMessages(prev => prev.map(msg => 
-        msg.sender === "explainer" && msg.isLoading ? {
-          ...msg,
+        // Add explainer message
+        const summaryPoints = explainerResult.suggested_route_summary.pros
+          .slice(0, 2)
+          .map(pro => `✓ ${pro}`)
+          .join("\n");
+        
+        addChatMessage({
+          id: Date.now().toString(),
           content: `Here's why ${plannerResult.suggested_route} is recommended:\n\n${summaryPoints}\n\nI've prepared a detailed comparison of all routes below.`,
-          isLoading: false
-        } : msg
-      ));
+          sender: "explainer",
+          timestamp: new Date()
+        });
+      };
+      
+      setAgentQueue(prev => [...prev, {
+        type: "explainer",
+        action: explainerAction,
+        message: "Analyzing route options in detail..."
+      }]);
       
       // Set recommended route
       const recommendedRouteName = plannerResult.suggested_route;
@@ -215,20 +288,26 @@ export default function App() {
     } catch (error) {
       console.error("Error planning shipment:", error);
       
-      // Update error in chat
-      setChatMessages(prev => prev.map(msg => 
-        msg.isLoading ? {
-          ...msg,
-          content: "I encountered an error while planning your shipment. Please try again.",
-          isLoading: false
-        } : msg
-      ));
-    } finally {
-      setIsProcessing(false);
+      // Add error message
+      addChatMessage({
+        id: Date.now().toString(),
+        content: "I encountered an error while planning your shipment. Please try again.",
+        sender: "planner",
+        timestamp: new Date()
+      });
+      
+      throw error; // Rethrow to be caught by the queue processor
     }
   };
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Route Details Drawer */}
+      <RouteDetailsDrawer 
+        isOpen={isRouteDetailsOpen}
+        onClose={() => setIsRouteDetailsOpen(false)}
+        route={selectedRouteDetails}
+      />
+      
       {/* Top Navigation */}
       <TopNavigation />
       
@@ -270,6 +349,7 @@ export default function App() {
                   <ChatInterface 
                     messages={chatMessages}
                     isProcessing={isProcessing}
+                    suggestedPrompts={suggestedPrompts}
                     onSendMessage={(message) => {
                       // Add user message to chat
                       addChatMessage({
@@ -331,6 +411,10 @@ export default function App() {
                                     // Find the route
                                     const selectedRoute = shipmentRoutes.find(r => r.name === routeName);
                                     if (selectedRoute) {
+                                      // Open the route details drawer
+                                      setSelectedRouteDetails(selectedRoute);
+                                      setIsRouteDetailsOpen(true);
+                                      
                                       // Convert to ShipmentRoute format
                                       const routeData: ShipmentRoute = {
                                         route_name: selectedRoute.name,
@@ -356,7 +440,7 @@ export default function App() {
                                         setChatMessages(prev => prev.map(msg => 
                                           msg.id === loadingId ? {
                                             ...msg,
-                                            content: `${routeName} Analysis:\n\nCost: $${selectedRoute.totalCost.toLocaleString()}\nDuration: ${selectedRoute.totalDuration} days\nRisk Score: ${selectedRoute.riskScore.toFixed(1)}/10\n\nKey cost factors:\n${costFactors}`,
+                                            content: `${routeName} Analysis:\n\nCost: $${selectedRoute.totalCost.toLocaleString()}\nDuration: ${selectedRoute.totalDuration} days\nRisk Score: ${selectedRoute.riskScore.toFixed(1)}/10\n\nKey cost factors:\n${costFactors}\n\nClick on the route card to see detailed stops and transportation modes.`,
                                             isLoading: false
                                           } : msg
                                         ));
@@ -425,7 +509,7 @@ export default function App() {
                             </div>
                           </>
                         )}
-                      </div>
+                    </div>
                     ) : (
                       <RouteComparison 
                         routes={shipmentRoutes}
